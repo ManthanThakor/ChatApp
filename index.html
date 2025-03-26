@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhatsApp-Style Chat</title>
+    <!-- SignalR Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+
+    <!-- Tailwind CSS for advanced styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome for icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+    />
+
+    <style>
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #2a3942;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #128c7e;
+        border-radius: 3px;
+      }
+
+      /* Animations */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .message {
+        animation: fadeIn 0.3s ease-out;
+        max-width: 80%;
+        word-break: break-word;
+      }
+
+      .message.sent {
+        background: linear-gradient(135deg, #005c4b, #1a4a3a);
+        align-self: flex-end;
+      }
+
+      .message.received {
+        background: linear-gradient(135deg, #3b4a54, #2a3942);
+        align-self: flex-start;
+      }
+
+      .message.system {
+        background: #2a3942;
+        color: #25d366;
+        text-align: center;
+        align-self: center;
+      }
+    </style>
+  </head>
+  <body class="bg-[#111b21] flex justify-center items-center min-h-screen">
+    <!-- Login Section -->
+    <div
+      id="loginSection"
+      class="bg-[#202c33] p-6 rounded-lg shadow-lg text-center"
+    >
+      <h3 class="text-white text-2xl mb-4">Enter Your Username</h3>
+      <input
+        type="text"
+        id="usernameInput"
+        placeholder="Enter your name"
+        class="w-full p-3 rounded-full bg-[#2a3942] text-white text-center mb-4"
+      />
+      <button
+        onclick="startChat()"
+        class="bg-[#128c7e] text-white px-6 py-2 rounded-full hover:bg-[#25d366] transition duration-300"
+      >
+        Join Chat
+      </button>
+    </div>
+
+    <!-- Chat Container -->
+    <div
+      id="chatContainer"
+      class="hidden w-96 h-[550px] bg-[#202c33] rounded-lg flex flex-col shadow-lg"
+    >
+      <!-- Chat Header -->
+      <div
+        class="bg-[#128c7e] p-3 text-white flex justify-between items-center"
+      >
+        <span id="chatUser" class="text-lg font-bold">WhatsApp Chat</span>
+
+        <div class="flex items-center space-x-2">
+          <select
+            id="chatMode"
+            class="bg-[#2a3942] text-white rounded px-2 py-1"
+          >
+            <option value="private">Private</option>
+            <option value="group">Group</option>
+          </select>
+          <button
+            id="toggleModeBtn"
+            class="text-white hover:text-[#25d366] transition"
+            onclick="toggleChatMode()"
+          >
+            <i class="fas fa-exchange-alt"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages List -->
+      <div
+        id="messagesList"
+        class="flex-1 p-3 overflow-y-auto flex flex-col space-y-2 scrollbar-thin scrollbar-thumb-[#128c7e] scrollbar-track-[#2a3942]"
+      ></div>
+
+      <!-- Private Chat Input -->
+      <div
+        id="privateChatInput"
+        class="flex flex-wrap gap-5 p-3 bg-[#202c33] border-t border-[#2a3942]"
+      >
+        <input
+          type="text"
+          id="privateUser"
+          placeholder="To: Username"
+          class="flex-1 p-2 rounded-full bg-[#2a3942] text-white"
+        />
+        <input
+          type="text"
+          id="privateMessage"
+          placeholder="Type a private message"
+          class="flex-[2] p-2 rounded-full bg-[#2a3942] text-white"
+        />
+        <button
+          onclick="sendPrivateMessage()"
+          class="bg-transparent text-[#128c7e] hover:text-[#25d366] transition"
+        >
+          <i class="fas fa-paper-plane text-xl"></i>
+        </button>
+      </div>
+
+      <!-- Group Chat Input -->
+      <div
+        id="groupChatInput"
+        class="hidden flex flex-wrap gap-5 space-x-2 p-3 bg-[#202c33] border-t border-[#2a3942]"
+      >
+        <input
+          type="text"
+          id="groupName"
+          placeholder="Group Name"
+          class="flex-1 p-2 rounded-full bg-[#2a3942] text-white"
+        />
+        <input
+          type="text"
+          id="groupMessage"
+          placeholder="Type a group message"
+          class="flex-[2] p-2 rounded-full bg-[#2a3942] text-white"
+        />
+        <button
+          onclick="sendGroupMessage()"
+          class="bg-transparent text-[#128c7e] hover:text-[#25d366] transition"
+        >
+          <i class="fas fa-paper-plane text-xl"></i>
+        </button>
+      </div>
+    </div>
+
+    <script>
+      let username;
+      let connection;
+      let currentChatMode = "private";
+
+      function toggleChatMode() {
+        currentChatMode = currentChatMode === "private" ? "group" : "private";
+
+        const privateChatInput = document.getElementById("privateChatInput");
+        const groupChatInput = document.getElementById("groupChatInput");
+        const chatMode = document.getElementById("chatMode");
+
+        if (currentChatMode === "private") {
+          privateChatInput.classList.remove("hidden");
+          groupChatInput.classList.add("hidden");
+          chatMode.value = "private";
+        } else {
+          privateChatInput.classList.add("hidden");
+          groupChatInput.classList.remove("hidden");
+          chatMode.value = "group";
+        }
+      }
+
+      async function startChat() {
+        username = document.getElementById("usernameInput").value.trim();
+        if (!username) {
+          alert("Please enter a username!");
+          return;
+        }
+
+        document.getElementById("chatUser").textContent = username;
+        document.getElementById("loginSection").classList.add("hidden");
+        document.getElementById("chatContainer").classList.remove("hidden");
+
+        connection = new signalR.HubConnectionBuilder()
+          .withUrl("https://localhost:7141/chatHub")
+          .configureLogging(signalR.LogLevel.Information)
+          .build();
+
+        try {
+          await connection.start();
+          console.log("Connected as", username);
+          await connection.invoke("SetUsername", username);
+          displayMessage("System", `Welcome, ${username}!`, false, "system");
+        } catch (err) {
+          console.error("Connection failed:", err);
+          displayMessage(
+            "System",
+            "Failed to connect. Please try again.",
+            false,
+            "system"
+          );
+        }
+
+        connection.on("ReceivePrivateMessage", (user, message) => {
+          displayMessage(user, message, false);
+        });
+
+        connection.on("ReceiveGroupMessage", (user, message) => {
+          displayMessage(user, message, false, "group");
+        });
+      }
+
+      function sendPrivateMessage() {
+        if (!connection) {
+          console.error("Connection is not established.");
+          return;
+        }
+
+        let toUser = document.getElementById("privateUser").value.trim();
+        let message = document.getElementById("privateMessage").value.trim();
+        if (!toUser || !message) return;
+
+        connection
+          .invoke("SendPrivateMessage", toUser, message)
+          .catch((err) => {
+            console.error(err);
+            displayMessage(
+              "System",
+              "Failed to send message.",
+              false,
+              "system"
+            );
+          });
+
+        displayMessage("You", message, true);
+        document.getElementById("privateMessage").value = "";
+      }
+
+      function sendGroupMessage() {
+        if (!connection) {
+          console.error("Connection is not established.");
+          return;
+        }
+
+        let group = document.getElementById("groupName").value.trim();
+        let message = document.getElementById("groupMessage").value.trim();
+        if (!group || !message) return;
+
+        connection.invoke("SendMessageToGroup", group, message).catch((err) => {
+          console.error(err);
+          displayMessage(
+            "System",
+            "Failed to send group message.",
+            false,
+            "system"
+          );
+        });
+
+        displayMessage("You", message, true, "group");
+        document.getElementById("groupMessage").value = "";
+      }
+
+      function displayMessage(sender, message, isSent, type = "private") {
+        let msgDiv = document.createElement("div");
+        msgDiv.classList.add(
+          "message",
+          "p-2",
+          "rounded-lg",
+          "text-white",
+          "max-w-[80%]",
+          isSent ? "sent" : "received"
+        );
+
+        if (type === "system") {
+          msgDiv.classList.remove("sent", "received");
+          msgDiv.classList.add("system");
+        }
+
+        msgDiv.textContent =
+          type === "system"
+            ? message
+            : `${isSent ? "" : sender + ": "}${message}`;
+
+        document.getElementById("messagesList").appendChild(msgDiv);
+
+        // Auto-scroll to bottom
+        const messagesList = document.getElementById("messagesList");
+        messagesList.scrollTop = messagesList.scrollHeight;
+      }
+
+      // Add event listeners for Enter key
+      document.addEventListener("DOMContentLoaded", () => {
+        document
+          .getElementById("usernameInput")
+          .addEventListener("keypress", (e) => {
+            if (e.key === "Enter") startChat();
+          });
+
+        document
+          .getElementById("privateMessage")
+          .addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendPrivateMessage();
+          });
+
+        document
+          .getElementById("groupMessage")
+          .addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendGroupMessage();
+          });
+      });
+    </script>
+  </body>
+</html>
